@@ -1,1 +1,31 @@
-# loan-repayment-manager-app
+# ローン返済計算機
+
+**Loan Repayment Manager** — 1項目を空白にするだけで逆算できるローン計算アプリ
+
+## 機能
+
+- 6項目（購入金額・頭金・返済回数・ボーナス払い・金利・月々の返済額）のうち **1項目を空白** にして逆算
+- 元本・利息の年別推移グラフ
+- 最初の10年分の年別返済表
+- ダークモード対応
+- PWA対応（ホーム画面に追加可能・オフライン動作）
+
+## GitHub Pages へのデプロイ
+
+1. このフォルダの中身を GitHub リポジトリに push
+2. Settings → Pages → Source を `main` ブランチの `/(root)` に設定
+3. 数分後に公開URLにアクセス
+
+## ファイル構成
+
+```
+index.html          メインアプリ
+manifest.json       PWA設定
+service-worker.js   オフライン対応・ホーム画面追加
+icon_192x192.png    アイコン (192px)
+icon_512x512.png    アイコン (512px)
+```
+
+## 計算方式
+
+元利均等返済方式を採用しています。

@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ローン返済計算機</title>
+  <meta name="description" content="購入金額・頭金・返済回数・ボーナス払い・金利・月々の返済額のうち1項目を逆算できるローン計算アプリ">
+  <link rel="icon" type="image/png" sizes="192x192" href="icon_192x192.png">
+  <link rel="apple-touch-icon" href="icon_192x192.png">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#2196f3">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="ローン計算">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --blue: #2196f3;
+      --blue-dark: #1565c0;
+      --blue-light: #e3f2fd;
+      --green: #1D9E75;
+      --green-light: #E1F5EE;
+      --bg: #f5f7fa;
+      --surface: #ffffff;
+      --border: rgba(0,0,0,0.1);
+      --text: #1a1a2e;
+      --text-2: #5f6368;
+      --text-3: #9aa0a6;
+      --radius: 12px;
+      --radius-sm: 8px;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f1117;
+        --surface: #1e2130;
+        --border: rgba(255,255,255,0.1);
+        --text: #e8eaf6;
+        --text-2: #9fa8da;
+        --text-3: #5c6bc0;
+        --blue-light: #1a2744;
+        --green-light: #0d2420;
+      }
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Yu Gothic UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding-bottom: 2rem;
+    }
+
+    header {
+      background: var(--blue);
+      padding: 1rem 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    header img { width: 36px; height: 36px; border-radius: 8px; }
+    header h1 { font-size: 17px; font-weight: 600; color: #fff; letter-spacing: 0.02em; }
+    header p { font-size: 11px; color: rgba(255,255,255,0.75); margin-top: 1px; }
+
+    .container { max-width: 680px; margin: 0 auto; padding: 1.25rem 1rem; }
+
+    .hint {
+      font-size: 13px;
+      color: var(--text-2);
+      background: var(--blue-light);
+      border-radius: var(--radius-sm);
+      padding: 10px 14px;
+      margin-bottom: 1rem;
+      line-height: 1.6;
+    }
+    .hint strong { color: var(--blue); }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 1rem;
+    }
+    @media (max-width: 480px) { .grid { grid-template-columns: 1fr; } }
+
+    .field {
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 14px;
+      position: relative;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .field.empty { border-color: var(--blue); background: var(--blue-light); }
+    .field.computed { border-color: var(--green); background: var(--green-light); }
+
+    .field label {
+      display: block;
+      font-size: 11px;
+      color: var(--text-2);
+      margin-bottom: 6px;
+      font-weight: 500;
+      letter-spacing: 0.03em;
+    }
+    .field.empty label { color: var(--blue-dark); }
+    .field.computed label { color: var(--green); }
+
+    .field .input-row { display: flex; align-items: baseline; gap: 6px; }
+    .field input[type="number"] {
+      flex: 1;
+      border: none;
+      background: transparent;
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--text);
+      outline: none;
+      width: 100%;
+      min-width: 0;
+      -moz-appearance: textfield;
+    }
+    .field input[type="number"]::-webkit-inner-spin-button,
+    .field input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; }
+    .field.empty input { color: var(--blue-dark); }
+    .field.computed input { color: var(--green); }
+
+    .field .unit { font-size: 12px; color: var(--text-3); white-space: nowrap; }
+    .field.empty .unit { color: var(--blue); }
+    .field.computed .unit { color: var(--green); }
+
+    .field .hint-text { font-size: 10px; color: var(--text-3); margin-top: 3px; }
+
+    .badge {
+      position: absolute;
+      top: 9px; right: 9px;
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 99px;
+      font-weight: 500;
+    }
+    .badge-empty { background: #bbdefb; color: #1565c0; }
+    .badge-computed { background: #9FE1CB; color: #085041; }
+
+    .err {
+      font-size: 13px;
+      color: #c62828;
+      min-height: 20px;
+      margin-bottom: 0.75rem;
+      padding: 0 2px;
+    }
+
+    .btn-calc {
+      display: block;
+      width: 100%;
+      padding: 14px;
+      background: var(--blue);
+      color: #fff;
+      font-size: 15px;
+      font-weight: 600;
+      border: none;
+      border-radius: var(--radius);
+      cursor: pointer;
+      letter-spacing: 0.05em;
+      transition: background 0.15s, transform 0.1s;
+      margin-bottom: 1.25rem;
+    }
+    .btn-calc:hover { background: var(--blue-dark); }
+    .btn-calc:active { transform: scale(0.98); }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-bottom: 1.25rem;
+    }
+    @media (max-width: 400px) { .cards { grid-template-columns: 1fr 1fr; } }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 14px;
+    }
+    .card-lbl { font-size: 11px; color: var(--text-2); margin-bottom: 5px; }
+    .card-val { font-size: 16px; font-weight: 700; color: var(--text); }
+    .card-sub { font-size: 10px; color: var(--text-3); margin-top: 3px; }
+
+    .section-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-2);
+      margin-bottom: 8px;
+      letter-spacing: 0.04em;
+    }
+
+    .legend { display: flex; gap: 16px; margin-bottom: 8px; font-size: 12px; color: var(--text-2); }
+    .legend span { display: flex; align-items: center; gap: 5px; }
+    .legend-dot { width: 10px; height: 10px; border-radius: 2px; }
+
+    .chart-wrap { position: relative; width: 100%; height: 200px; margin-bottom: 1.25rem; }
+
+    .tbl-wrap { overflow-x: auto; margin-bottom: 1rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
+    th {
+      text-align: left;
+      padding: 6px 8px;
+      color: var(--text-2);
+      border-bottom: 1px solid var(--border);
+      font-weight: 500;
+      background: var(--surface);
+    }
+    td { padding: 5px 8px; border-bottom: 1px solid var(--border); color: var(--text); }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: var(--blue-light); }
+
+    .hidden { display: none !important; }
+
+    footer {
+      text-align: center;
+      font-size: 11px;
+      color: var(--text-3);
+      margin-top: 2rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--border);
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <img src="icon_192x192.png" alt="アイコン">
+  <div>
+    <h1>ローン返済計算機</h1>
+    <p>Loan Repayment Manager</p>
+  </div>
+</header>
+
+<div class="container">
+  <p class="hint">6項目のうち <strong>1項目だけ空白</strong> にして「逆算する」を押してください。空白の項目が自動で計算されます。</p>
+
+  <div class="grid">
+    <div class="field" id="f-price">
+      <label>購入金額</label>
+      <div class="input-row">
+        <input type="number" id="price" placeholder="3000" min="0" step="1">
+        <span class="unit">万円</span>
+      </div>
+    </div>
+    <div class="field" id="f-down">
+      <label>頭金</label>
+      <div class="input-row">
+        <input type="number" id="down" placeholder="300" min="0" step="1">
+        <span class="unit">万円</span>
+      </div>
+    </div>
+    <div class="field" id="f-months">
+      <label>返済回数</label>
+      <div class="input-row">
+        <input type="number" id="months" placeholder="420" min="1" step="1">
+        <span class="unit">回</span>
+      </div>
+      <div class="hint-text">35年 = 420回、25年 = 300回</div>
+    </div>
+    <div class="field" id="f-bonus">
+      <label>ボーナス払い（年2回）</label>
+      <div class="input-row">
+        <input type="number" id="bonus" placeholder="0" min="0" step="1">
+        <span class="unit">万円／回</span>
+      </div>
+      <div class="hint-text">なければ 0 を入力</div>
+    </div>
+    <div class="field" id="f-rate">
+      <label>年利率</label>
+      <div class="input-row">
+        <input type="number" id="rate" placeholder="1.5" min="0" step="0.01">
+        <span class="unit">%</span>
+      </div>
+    </div>
+    <div class="field" id="f-monthly">
+      <label>月々の返済額</label>
+      <div class="input-row">
+        <input type="number" id="monthly" placeholder="65000" min="0" step="1">
+        <span class="unit">円</span>
+      </div>
+    </div>
+  </div>
+
+  <p class="err" id="err"></p>
+  <button class="btn-calc" onclick="doCalc()">逆算する</button>
+
+  <div id="result-section" class="hidden">
+    <div class="cards">
+      <div class="card">
+        <p class="card-lbl">月々の返済額</p>
+        <p class="card-val" id="r-monthly">—</p>
+        <p class="card-sub" id="r-monthly-sub"></p>
+      </div>
+      <div class="card">
+        <p class="card-lbl">総返済額</p>
+        <p class="card-val" id="r-total">—</p>
+        <p class="card-sub" id="r-total-sub"></p>
+      </div>
+      <div class="card">
+        <p class="card-lbl">利息総額</p>
+        <p class="card-val" id="r-interest">—</p>
+        <p class="card-sub" id="r-interest-sub"></p>
+      </div>
+    </div>
+
+    <p class="section-title">元本・利息の返済推移</p>
+    <div class="legend">
+      <span><span class="legend-dot" style="background:#2196f3"></span>元本</span>
+      <span><span class="legend-dot" style="background:#D85A30"></span>利息</span>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="chart" role="img" aria-label="元本と利息の年別返済推移グラフ"></canvas>
+    </div>
+
+    <p class="section-title">年別返済表（最初の10年）</p>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:12%">年</th>
+            <th style="width:22%;text-align:right">年間返済額</th>
+            <th style="width:20%;text-align:right">うち元本</th>
+            <th style="width:20%;text-align:right">うち利息</th>
+            <th style="width:26%;text-align:right">残高</th>
+          </tr>
+        </thead>
+        <tbody id="sched"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <footer>※ 元利均等返済方式で計算しています。実際のローンとは異なる場合があります。</footer>
+</div>
+
+<script>
+let chartInst = null;
+const fields = ['price','down','months','bonus','rate','monthly'];
+
+function getVal(id) {
+  const v = document.getElementById(id).value.trim();
+  return v === '' ? null : parseFloat(v);
+}
+function setFieldState(id, state) {
+  const f = document.getElementById('f-' + id);
+  f.className = 'field' + (state ? ' ' + state : '');
+  let badge = f.querySelector('.badge');
+  if (state === 'empty') {
+    if (!badge) { badge = document.createElement('span'); f.appendChild(badge); }
+    badge.className = 'badge badge-empty';
+    badge.textContent = '逆算対象';
+  } else if (state === 'computed') {
+    if (!badge) { badge = document.createElement('span'); f.appendChild(badge); }
+    badge.className = 'badge badge-computed';
+    badge.textContent = '計算結果';
+  } else {
+    if (badge) badge.remove();
+  }
+}
+function clearStates() { fields.forEach(id => setFieldState(id, '')); }
+function setErr(msg) { document.getElementById('err').textContent = msg; }
+function fmtYen(n) { return Math.round(n).toLocaleString('ja-JP') + '円'; }
+function fmtYenMan(n) {
+  const man = Math.round(n / 10000);
+  return man >= 1 ? man.toLocaleString('ja-JP') + '万円' : Math.round(n).toLocaleString('ja-JP') + '円';
+}
+function calcMonthly(P, r, n) {
+  if (r === 0) return P / n;
+  return P * r * Math.pow(1+r,n) / (Math.pow(1+r,n)-1);
+}
+
+function doCalc() {
+  clearStates();
+  setErr('');
+  document.getElementById('result-section').classList.add('hidden');
+
+  const vals = {};
+  fields.forEach(id => vals[id] = getVal(id));
+  const empties = fields.filter(id => vals[id] === null);
+
+  if (empties.length === 0) { setErr('1項目を空白にしてください'); return; }
+  if (empties.length > 1)  { setErr('空白は1項目のみにしてください（現在 ' + empties.length + ' 項目が空白です）'); empties.forEach(id => setFieldState(id,'empty')); return; }
+
+  const target = empties[0];
+  setFieldState(target, 'empty');
+
+  let price = vals.price !== null ? vals.price * 10000 : null;
+  let down  = vals.down  !== null ? vals.down  * 10000 : null;
+  let n     = vals.months;
+  let bonusPerTime = vals.bonus !== null ? vals.bonus * 10000 : null;
+  let rAnn  = vals.rate;
+  let monthlyYen = vals.monthly;
+
+  try {
+    if (target === 'price') {
+      if ([down,n,bonusPerTime,rAnn,monthlyYen].some(v=>v===null)) { setErr('他の5項目をすべて入力してください'); return; }
+      const r = rAnn/100/12;
+      const bonusTotal = bonusPerTime*2*(n/12);
+      const lp = r===0 ? monthlyYen*n : monthlyYen*(Math.pow(1+r,n)-1)/(r*Math.pow(1+r,n));
+      price = lp + bonusTotal + down;
+      document.getElementById('price').value = Math.round(price/10000);
+
+    } else if (target === 'down') {
+      if ([price,n,bonusPerTime,rAnn,monthlyYen].some(v=>v===null)) { setErr('他の5項目をすべて入力してください'); return; }
+      const r = rAnn/100/12;
+      const bonusTotal = bonusPerTime*2*(n/12);
+      const lp = r===0 ? monthlyYen*n : monthlyYen*(Math.pow(1+r,n)-1)/(r*Math.pow(1+r,n));
+      down = price - lp - bonusTotal;
+      if (down < 0) { setErr('月々の返済額が高すぎます。頭金がマイナスになります'); return; }
+      document.getElementById('down').value = Math.round(down/10000);
+
+    } else if (target === 'months') {
+      if ([price,down,bonusPerTime,rAnn,monthlyYen].some(v=>v===null)) { setErr('他の5項目をすべて入力してください'); return; }
+      const P = price-down, r = rAnn/100/12, ba = bonusPerTime*2;
+      if (monthlyYen<=0) { setErr('月々の返済額は0より大きくしてください'); return; }
+      let found=null;
+      for (let nm=1;nm<=600;nm++) {
+        const lc = r===0 ? monthlyYen*nm : monthlyYen*(Math.pow(1+r,nm)-1)/(r*Math.pow(1+r,nm));
+        if (lc + ba*(nm/12) >= P) { found=nm; break; }
+      }
+      if (!found) { setErr('月々の返済額が少なすぎて返済できません'); return; }
+      n = found;
+      document.getElementById('months').value = found;
+
+    } else if (target === 'bonus') {
+      if ([price,down,n,rAnn,monthlyYen].some(v=>v===null)) { setErr('他の5項目をすべて入力してください'); return; }
+      const P = price-down, r = rAnn/100/12;
+      const lp = r===0 ? monthlyYen*n : monthlyYen*(Math.pow(1+r,n)-1)/(r*Math.pow(1+r,n));
+      const rem = P - lp;
+      if (rem<=0) { setErr('月々の返済額だけで完済できます。ボーナス払い不要（0円）'); document.getElementById('bonus').value=0; bonusPerTime=0; }
+      else { bonusPerTime = rem/(2*(n/12)); document.getElementById('bonus').value = Math.round(bonusPerTime/10000); }
+
+    } else if (target === 'rate') {
+      if ([price,down,n,bonusPerTime,monthlyYen].some(v=>v===null)) { setErr('他の5項目をすべて入力してください'); return; }
+      const P = price-down, bt = bonusPerTime*2*(n/12), ep = P-bt;
+      if (ep<=0) { setErr('ボーナス払いだけで完済できます。金利逆算には月々返済が必要です'); return; }
+      // 上限を月利2%（年利24%）に設定
+      if (monthlyYen * n < ep) { setErr("月々の返済額が少なすぎます（元本を返済しきれません）"); return; }
+      let lo=0, hi=0.02, rm;
+      for (let i=0;i<100;i++) {
+        rm=(lo+hi)/2;
+        const c = rm===0 ? ep/n : ep*rm*Math.pow(1+rm,n)/(Math.pow(1+rm,n)-1);
+        if (c<monthlyYen) lo=rm; else hi=rm;
+      }
+      rAnn = rm*12*100;
+      if (rAnn > 24) { setErr("計算された金利が24%を超えています。入力値をご確認ください"); return; }
+      document.getElementById('rate').value = parseFloat(rAnn.toFixed(2));
+
+    } else if (target === 'monthly') {
+      if ([price,down,n,bonusPerTime,rAnn].some(v=>v===null)) { setErr('他の5項目をすべて入力してください'); return; }
+      const P = price-down, r = rAnn/100/12;
+      monthlyYen = calcMonthly(P,r,n);
+      document.getElementById('monthly').value = Math.round(monthlyYen);
+    }
+  } catch(e) { setErr('計算エラーが発生しました'); return; }
+
+  setFieldState(target,'computed');
+
+  const fP      = vals.price   !==null ? vals.price  *10000 : price;
+  const fDown   = vals.down    !==null ? vals.down   *10000 : (down||0);
+  const fN      = vals.months  !==null ? vals.months         : n;
+  const fBonus  = vals.bonus   !==null ? vals.bonus  *10000 : (bonusPerTime||0);
+  const fRate   = vals.rate    !==null ? vals.rate           : rAnn;
+  const fMon    = vals.monthly !==null ? vals.monthly        : Math.round(monthlyYen);
+  const fR      = fRate/100/12;
+  const fYrs    = fN/12;
+  const fLoan   = fP - fDown;
+  const totalRepay   = fMon*fN + fBonus*2*fYrs;
+  const totalInterest = totalRepay - fLoan;
+
+  document.getElementById('r-monthly').textContent   = fmtYen(fMon);
+  document.getElementById('r-monthly-sub').textContent = fBonus>0 ? `+ ボーナス ${fmtYenMan(fBonus)}×年2回` : '元利均等返済';
+  document.getElementById('r-total').textContent     = fmtYenMan(totalRepay);
+  document.getElementById('r-total-sub').textContent = `借入 ${fmtYenMan(fLoan)} + 利息`;
+  document.getElementById('r-interest').textContent  = fmtYenMan(totalInterest);
+  document.getElementById('r-interest-sub').textContent = `元本の ${((totalInterest/fLoan)*100).toFixed(1)}%`;
+
+  const labels=[],princData=[],intData=[];
+  let bal = fLoan;
+  const tbody = document.getElementById('sched');
+  tbody.innerHTML='';
+
+  for (let y=1; y<=Math.ceil(fYrs); y++) {
+    let yp=0,yi=0;
+    for (let m=0;m<12&&(y-1)*12+m<fN;m++) {
+      const ip=bal*fR, pp=fR===0?fLoan/fN:fMon-ip;
+      yi+=ip; yp+=pp; bal-=pp; if(bal<0)bal=0;
+    }
+    const yB=fBonus*2;
+    labels.push(y+'年');
+    princData.push(Math.round((yp+yB)/10000));
+    intData.push(Math.round(yi/10000));
+    if (y<=10) {
+      const yr=Math.round((fMon*12+yB)/10000);
+      const tr=document.createElement('tr');
+      tr.innerHTML=`<td>${y}年目</td><td style="text-align:right">${yr}万円</td><td style="text-align:right">${Math.round((yp+yB)/10000)}万円</td><td style="text-align:right">${Math.round(yi/10000)}万円</td><td style="text-align:right">${Math.max(0,Math.round(bal/10000))}万円</td>`;
+      tbody.appendChild(tr);
+    }
+  }
+
+  if (chartInst) chartInst.destroy();
+  chartInst = new Chart(document.getElementById('chart'), {
+    type:'bar',
+    data:{ labels, datasets:[
+      {label:'元本', data:princData, backgroundColor:'#2196f3', stack:'a'},
+      {label:'利息', data:intData,   backgroundColor:'#D85A30', stack:'a'}
+    ]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{stacked:true, ticks:{maxTicksLimit:12,font:{size:10}}, grid:{display:false}},
+        y:{stacked:true, ticks:{font:{size:10}, callback:v=>v+'万'}, grid:{color:'rgba(128,128,128,0.08)'}}
+      }
+    }
+  });
+
+  document.getElementById('result-section').classList.remove('hidden');
+  document.getElementById('result-section').scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+fields.forEach(id => {
+  document.getElementById(id).addEventListener('input', () => {
+    clearStates(); setErr('');
+    document.getElementById('result-section').classList.add('hidden');
+  });
+});
+
+// Service Worker 登録（古いキャッシュを強制削除してから再登録）
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', async () => {
+    // 既存のSWをすべてアンインストール
+    const regs = await navigator.serviceWorker.getRegistrations();
+    for (const reg of regs) await reg.unregister();
+    // キャッシュもすべて削除
+    const cacheKeys = await caches.keys();
+    for (const key of cacheKeys) await caches.delete(key);
+    // 新しいSWを登録
+    navigator.serviceWorker.register('./service-worker.js')
+      .catch(err => console.warn('SW registration failed:', err));
+  });
+}
+</script>
+</body>
+</html>
